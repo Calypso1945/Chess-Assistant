@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="board-section">
+            <div class="board-container">
+                <div class="chess-board" id="board"></div>
+                <div class="promotion-dialog" id="promotionDialog">
+                    <span class="piece" data-piece="q">♕</span>
+                    <span class="piece" data-piece="r">♖</span>
+                    <span class="piece" data-piece="b">♗</span>
+                    <span class="piece" data-piece="n">♘</span>
+                </div>
+            </div>
+            <div class="status-bar" id="status">Ready to play</div>
+        </div>
+
+        <div class="controls">
+            <div class="panel">
+                <h3>Game Settings</h3>
+                <div class="control-group">
+                    <label for="boardTheme">Board Theme</label>
+                    <select id="boardTheme" onchange="changeTheme()">
+                        <option value="default">Default Gray/Green</option>
+                        <option value="classic">Classic Brown</option>
+                        <option value="blue">Blue Theme</option>
+                        <option value="green">Tournament Green</option>
+                        <option value="purple">Purple Theme</option>
+                        <option value="contrast">High Contrast</option>
+                        <option value="dark">Dark Mode</option>
+                        <option value="wood">Wood Pattern</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="playerColor">Your Color</label>
+                    <select id="playerColor" onchange="handleColorChange()">
+                        <option value="white">White</option>
+                        <option value="black">Black</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="gameMode">Game Mode</label>
+                    <select id="gameMode">
+                        <option value="suggest">Suggest Moves Only</option>
+                        <option value="play">Play vs Computer</option>
+                    </select>
+                </div>
+                <button class="button" onclick="newGame()">New Game</button>
+                <button class="button secondary" onclick="suggestMove()">Suggest Best Move</button>
+            </div>
+
+            <div class="panel">
+                <h3>Engine Settings</h3>
+                <div class="control-group">
+                    <label for="time">Thinking Time: <span id="timeValue">1.0</span>s</label>
+                    <input type="range" id="time" min="0.1" max="10" step="0.1" value="1.0">
+                </div>
+                <div class="control-group">
+                    <label for="threads">CPU Threads: <span id="threadsValue">1</span></label>
+                    <input type="range" id="threads" min="1" max="16" value="1">
+                </div>
+                <div class="control-group">
+                    <label for="memory">Memory (MB): <span id="memoryValue">128</span></label>
+                    <input type="range" id="memory" min="16" max="2048" step="16" value="128">
+                </div>
+                <button class="button secondary" onclick="updateEngineSettings()">Apply Settings</button>
+            </div>
+
+            <div class="panel">
+                <h3>Game Control</h3>
+                <button class="button secondary" onclick="undoMove()">Undo Move</button>
+                <button class="button secondary" onclick="resetGame()">Reset Board</button>
+                <div style="margin-top: 15px;">
+                    <button class="button secondary" onclick="saveGame()">Save Game</button>
+                    <div class="file-input-wrapper" style="display: inline-block;">
+                        <button class="button secondary">Load Game</button>
+                        <input type="file" id="loadFile" accept=".pgn,.fen,.txt" onchange="loadGame(event)">
+                    </div>
+                </div>
+                <div class="control-group" style="margin-top: 15px;">
+                    <label for="fenInput">Load FEN Position</label>
+                    <input type="text" id="fenInput" placeholder="Paste FEN string here">
+                    <button class="button secondary" style="margin-top: 10px;" onclick="loadFEN()">Load FEN</button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Move History</h3>
+                <div class="move-history" id="moveHistory"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="saveModal">
+        <div class="modal-content">
+            <h3>Save Game</h3>
+            <div class="control-group">
+                <label>Format</label>
+                <select id="saveFormat">
+                    <option value="pgn">PGN (Game notation)</option>
+                    <option value="fen">FEN (Current position)</option>
+                </select>
+            </div>
+            <textarea id="saveData" readonly></textarea>
+            <div class="modal-buttons">
+                <button class="button secondary" onclick="closeSaveModal()">Close</button>
+                <button class="button" onclick="downloadSave()">Download</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
