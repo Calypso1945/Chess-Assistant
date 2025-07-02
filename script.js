@@ -59,7 +59,8 @@ function renderBoard() {
             const piece = position[row][col];
             if (piece) {
                 const pieceElement = document.createElement('span');
-                pieceElement.className = 'piece';
+                const isWhitePiece = piece === piece.toUpperCase();
+                pieceElement.className = `piece ${isWhitePiece ? 'white' : 'black'}`;
                 pieceElement.textContent = pieceUnicode[piece];
                 pieceElement.draggable = true;
                 pieceElement.dataset.piece = piece;
@@ -576,8 +577,10 @@ function changeTheme() {
     
     const themes = {
         default: {
-            light: '#e8e8e8',
-            dark: '#7d945d',
+            light: '#f0d9b5',
+            dark: '#b58863',
+            lightTexture: 'linear-gradient(45deg, rgba(139, 69, 19, 0.1) 25%, transparent 25%), linear-gradient(-45deg, rgba(139, 69, 19, 0.1) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(139, 69, 19, 0.1) 75%), linear-gradient(-45deg, transparent 75%, rgba(139, 69, 19, 0.1) 75%)',
+            darkTexture: 'linear-gradient(45deg, rgba(101, 67, 33, 0.3) 25%, transparent 25%), linear-gradient(-45deg, rgba(101, 67, 33, 0.3) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(101, 67, 33, 0.3) 75%), linear-gradient(-45deg, transparent 75%, rgba(101, 67, 33, 0.3) 75%)',
             highlight: '#7fc470',
             suggestionFrom: '#5587d4',
             suggestionTo: '#4472c4'
@@ -585,6 +588,8 @@ function changeTheme() {
         classic: {
             light: '#f0d9b5',
             dark: '#b58863',
+            lightTexture: 'none',
+            darkTexture: 'none',
             highlight: '#7fc470',
             suggestionFrom: '#5587d4',
             suggestionTo: '#4472c4'
@@ -592,6 +597,8 @@ function changeTheme() {
         blue: {
             light: '#eeeee2',
             dark: '#6e8ca8',
+            lightTexture: 'none',
+            darkTexture: 'none',
             highlight: '#7fc470',
             suggestionFrom: '#ffeb3b',
             suggestionTo: '#ffc107'
@@ -599,6 +606,8 @@ function changeTheme() {
         green: {
             light: '#ffffdd',
             dark: '#86a666',
+            lightTexture: 'none',
+            darkTexture: 'none',
             highlight: '#ff6b6b',
             suggestionFrom: '#4ecdc4',
             suggestionTo: '#45b7aa'
@@ -606,6 +615,8 @@ function changeTheme() {
         purple: {
             light: '#efefef',
             dark: '#7d4a8d',
+            lightTexture: 'none',
+            darkTexture: 'none',
             highlight: '#ff6b6b',
             suggestionFrom: '#4ecdc4',
             suggestionTo: '#45b7aa'
@@ -613,6 +624,8 @@ function changeTheme() {
         contrast: {
             light: '#ffffff',
             dark: '#5a5a5a',
+            lightTexture: 'none',
+            darkTexture: 'none',
             highlight: '#00ff00',
             suggestionFrom: '#ff0000',
             suggestionTo: '#cc0000'
@@ -620,6 +633,8 @@ function changeTheme() {
         dark: {
             light: '#2e2e2e',
             dark: '#1a1a1a',
+            lightTexture: 'none',
+            darkTexture: 'none',
             highlight: '#4a4a4a',
             suggestionFrom: '#3a5a8a',
             suggestionTo: '#2a4a7a'
@@ -627,6 +642,8 @@ function changeTheme() {
         wood: {
             light: '#deb887',
             dark: '#8b4513',
+            lightTexture: 'repeating-linear-gradient(0deg, rgba(139, 69, 19, 0.1), rgba(139, 69, 19, 0.1) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(90deg, rgba(160, 82, 45, 0.15), rgba(160, 82, 45, 0.15) 1px, transparent 1px, transparent 3px), radial-gradient(ellipse at center, rgba(101, 67, 33, 0.1) 0%, transparent 50%)',
+            darkTexture: 'repeating-linear-gradient(0deg, rgba(101, 67, 33, 0.2), rgba(101, 67, 33, 0.2) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(90deg, rgba(139, 69, 19, 0.25), rgba(139, 69, 19, 0.25) 1px, transparent 1px, transparent 3px), radial-gradient(ellipse at center, rgba(83, 53, 10, 0.2) 0%, transparent 50%)',
             highlight: '#90ee90',
             suggestionFrom: '#4682b4',
             suggestionTo: '#1e90ff'
@@ -636,6 +653,8 @@ function changeTheme() {
     const selectedTheme = themes[theme];
     root.style.setProperty('--light-square', selectedTheme.light);
     root.style.setProperty('--dark-square', selectedTheme.dark);
+    root.style.setProperty('--light-texture', selectedTheme.lightTexture);
+    root.style.setProperty('--dark-texture', selectedTheme.darkTexture);
     root.style.setProperty('--highlight-color', selectedTheme.highlight);
     root.style.setProperty('--suggestion-from', selectedTheme.suggestionFrom);
     root.style.setProperty('--suggestion-to', selectedTheme.suggestionTo);
