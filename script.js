@@ -60,7 +60,7 @@ function renderBoard() {
             if (piece) {
                 const pieceElement = document.createElement('span');
                 const isWhitePiece = piece === piece.toUpperCase();
-                pieceElement.className = `piece ${isWhitePiece ? 'white' : 'black'}`;
+                pieceElement.className = `piece ${isWhitePiece ? 'black' : 'white'}`;
                 pieceElement.textContent = pieceUnicode[piece];
                 pieceElement.draggable = true;
                 pieceElement.dataset.piece = piece;
