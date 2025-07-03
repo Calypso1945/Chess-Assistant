@@ -1,4 +1,6 @@
 const API_URL = 'http://localhost:5000/api';
+const SOCKET_URL = 'http://localhost:5000';
+let socket = null;
 let board = null;
 let currentFEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 let selectedSquare = null;
@@ -9,6 +11,11 @@ let draggedPiece = null;
 let draggedFrom = null;
 let preventIllegalMoves = true;
 let lastSuggestion = null;
+
+// Multiplayer variables
+let multiplayerGame = null;
+let multiplayerColor = null;
+let playerId = null;
 
 const pieceUnicode = {
     'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
@@ -37,7 +44,8 @@ const soundManager = {
             gameStart: { frequency: 880, duration: 0.2, type: 'sine' },
             gameEnd: { frequency: 440, duration: 0.4, type: 'sine' },
             button: { frequency: 900, duration: 0.05, type: 'sine' },
-            error: { frequency: 300, duration: 0.2, type: 'square' }
+            error: { frequency: 300, duration: 0.2, type: 'square' },
+            playerJoin: { frequency: 1000, duration: 0.15, type: 'sine' }
         };
         
         console.log('Sound system initialized');
@@ -150,11 +158,90 @@ const soundManager = {
     }
 };
 
+// Initialize WebSocket connection
+function initializeSocket() {
+    socket = io(SOCKET_URL);
+    
+    socket.on('connect', () => {
+        console.log('Connected to server');
+    });
+    
+    socket.on('connected', (data) => {
+        playerId = data.player_id;
+        console.log('Player ID:', playerId);
+    });
+    
+    socket.on('game_created', (data) => {
+        multiplayerGame = data.state;
+        multiplayerColor = data.color;
+        showGameLink(data.game_id);
+        updateMultiplayerInfo();
+        updateStatus(`Game created! You are playing as ${data.color}`, 'success');
+        soundManager.playSound('gameStart');
+    });
+    
+    socket.on('game_joined', (data) => {
+        multiplayerGame = data.state;
+        multiplayerColor = data.color;
+        currentFEN = data.state.fen;
+        renderBoard();
+        updateMoveHistory(data.state.history);
+        showGameLink(data.game_id);
+        updateMultiplayerInfo();
+        updateStatus(`Joined game! You are playing as ${data.color}`, 'success');
+        soundManager.playSound('playerJoin');
+    });
+    
+    socket.on('player_joined', (state) => {
+        multiplayerGame = state;
+        updateMultiplayerInfo();
+        if (state.status === 'active') {
+            updateStatus('Opponent joined! Game is starting.', 'success');
+            soundManager.playSound('playerJoin');
+        }
+    });
+    
+    socket.on('player_left', (state) => {
+        multiplayerGame = state;
+        updateMultiplayerInfo();
+        updateStatus('Opponent left the game', 'error');
+    });
+    
+    socket.on('move_made', (state) => {
+        multiplayerGame = state;
+        currentFEN = state.fen;
+        renderBoard();
+        updateMoveHistory(state.history);
+        updateMultiplayerInfo();
+        
+        if (state.game_over) {
+            updateStatus(`Game Over! Result: ${state.result}`, 'success');
+            if (state.result.includes('checkmate')) {
+                soundManager.playComplexSound('checkmate');
+            } else {
+                soundManager.playSound('gameEnd');
+            }
+        }
+    });
+    
+    socket.on('play_sound', (data) => {
+        soundManager.playSound(data.sound);
+    });
+    
+    socket.on('error', (data) => {
+        updateStatus(data.message, 'error');
+        soundManager.playSound('error');
+    });
+}
+
 // Initialize the application
 async function init() {
     try {
         // Initialize sound system
         soundManager.init();
+        
+        // Initialize WebSocket
+        initializeSocket();
         
         const response = await fetch(`${API_URL}/init`, {
             method: 'POST',
@@ -167,6 +254,7 @@ async function init() {
             renderBoard();
             updateStatus('Engine initialized successfully', 'success');
             soundManager.playSound('gameStart');
+            fetchActiveGames();
         } else {
             updateStatus('Failed to initialize engine', 'error');
             soundManager.playSound('error');
@@ -183,7 +271,7 @@ function renderBoard() {
     boardElement.innerHTML = '';
     
     const [position, turn, castling, enPassant, halfmove, fullmove] = parseFEN(currentFEN);
-    const isFlipped = playerColor === 'black';
+    const isFlipped = (gameMode === 'multiplayer' ? multiplayerColor : playerColor) === 'black';
     
     for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 8; col++) {
@@ -265,6 +353,14 @@ function parseFEN(fen) {
 
 // Handle piece drag start
 function handleDragStart(e) {
+    // In multiplayer mode, check if it's the player's turn
+    if (gameMode === 'multiplayer') {
+        if (!canMakeMove()) {
+            e.preventDefault();
+            return;
+        }
+    }
+    
     draggedPiece = e.target;
     draggedFrom = e.target.dataset.square;
     e.target.classList.add('dragging');
@@ -300,6 +396,11 @@ async function handleDrop(e) {
 
 // Handle square click (for click-to-move)
 async function handleSquareClick(e) {
+    // In multiplayer mode, check if it's the player's turn
+    if (gameMode === 'multiplayer' && !canMakeMove()) {
+        return;
+    }
+    
     const square = e.currentTarget.dataset.square;
     const piece = e.currentTarget.querySelector('.piece');
     
@@ -316,6 +417,15 @@ async function handleSquareClick(e) {
             fetchLegalMoves(square);
         }
     }
+}
+
+// Check if player can make a move in multiplayer
+function canMakeMove() {
+    if (!multiplayerGame || multiplayerGame.status !== 'active') {
+        return false;
+    }
+    
+    return multiplayerGame.current_turn === multiplayerColor;
 }
 
 // Fetch legal moves for a piece
@@ -380,6 +490,18 @@ async function makeMove(from, to, promotion = null) {
     const isCastling = piece && piece.dataset.piece.toLowerCase() === 'k' && 
                       Math.abs(from.charCodeAt(0) - to.charCodeAt(0)) === 2;
 
+    // Handle multiplayer move
+    if (gameMode === 'multiplayer') {
+        socket.emit('make_multiplayer_move', {
+            game_id: multiplayerGame.game_id,
+            from,
+            to,
+            promotion
+        });
+        return;
+    }
+
+    // Handle single player move
     try {
         const response = await fetch(`${API_URL}/move`, {
             method: 'POST',
@@ -456,6 +578,117 @@ function showPromotionDialog(from, to) {
             makeMove(from, to, piece.dataset.piece);
         };
     });
+}
+
+// Multiplayer functions
+function createMultiplayerGame() {
+    const color = document.getElementById('playerColor').value;
+    socket.emit('create_game', { color });
+}
+
+function joinMultiplayerGame() {
+    const gameId = document.getElementById('gameIdInput').value.trim();
+    if (!gameId) {
+        updateStatus('Please enter a game ID', 'error');
+        return;
+    }
+    
+    socket.emit('join_game', { game_id: gameId });
+}
+
+function leaveMultiplayerGame() {
+    if (multiplayerGame) {
+        socket.emit('leave_game', { game_id: multiplayerGame.game_id });
+        multiplayerGame = null;
+        multiplayerColor = null;
+        document.getElementById('gameLink').style.display = 'none';
+        document.getElementById('multiplayerInfo').innerHTML = '';
+        updateStatus('Left the game', 'success');
+        
+        // Reset to single player
+        resetGame();
+    }
+}
+
+function showGameLink(gameId) {
+    document.getElementById('gameLink').style.display = 'block';
+    document.getElementById('gameLinkText').value = gameId;
+}
+
+function copyGameId() {
+    const gameLinkText = document.getElementById('gameLinkText');
+    gameLinkText.select();
+    document.execCommand('copy');
+    updateStatus('Game ID copied to clipboard!', 'success');
+}
+
+function updateMultiplayerInfo() {
+    if (!multiplayerGame) return;
+    
+    const infoEl = document.getElementById('multiplayerInfo');
+    const whitePlayer = multiplayerGame.players.white ? 'Connected' : 'Waiting...';
+    const blackPlayer = multiplayerGame.players.black ? 'Connected' : 'Waiting...';
+    const currentTurn = multiplayerGame.current_turn;
+    const isYourTurn = currentTurn === multiplayerColor;
+    
+    infoEl.innerHTML = `
+        <div class="multiplayer-status">
+            <div>White: ${whitePlayer}</div>
+            <div>Black: ${blackPlayer}</div>
+            <div class="turn-indicator ${isYourTurn ? 'your-turn' : ''}">
+                ${isYourTurn ? 'Your turn' : `${currentTurn}'s turn`}
+            </div>
+        </div>
+    `;
+}
+
+async function fetchActiveGames() {
+    try {
+        const response = await fetch(`${API_URL}/active_games`);
+        const data = await response.json();
+        
+        const activeGamesEl = document.getElementById('activeGames');
+        if (data.games.length > 0) {
+            activeGamesEl.innerHTML = '<h4>Active Games:</h4>';
+            data.games.forEach(game => {
+                const gameEl = document.createElement('div');
+                gameEl.className = 'active-game-item';
+                gameEl.innerHTML = `
+                    <span>Game ${game.game_id} - ${game.status}</span>
+                    <button class="button secondary small" onclick="document.getElementById('gameIdInput').value='${game.game_id}'; joinMultiplayerGame()">Join</button>
+                `;
+                activeGamesEl.appendChild(gameEl);
+            });
+        } else {
+            activeGamesEl.innerHTML = '<p>No active games</p>';
+        }
+    } catch (error) {
+        console.error('Error fetching active games:', error);
+    }
+}
+
+function handleGameModeChange() {
+    const mode = document.getElementById('gameMode').value;
+    gameMode = mode;
+    
+    const multiplayerPanel = document.getElementById('multiplayerPanel');
+    const suggestButton = document.getElementById('suggestButton');
+    
+    if (mode === 'multiplayer') {
+        multiplayerPanel.style.display = 'block';
+        suggestButton.style.display = 'none';
+        fetchActiveGames();
+    } else {
+        multiplayerPanel.style.display = 'none';
+        suggestButton.style.display = 'inline-block';
+        
+        // Leave any active multiplayer game
+        if (multiplayerGame) {
+            leaveMultiplayerGame();
+        }
+    }
+    
+    updateConfig();
 }
 
 // Suggest best move
@@ -594,6 +827,11 @@ async function resetGame() {
 
 // Undo move
 async function undoMove() {
+    if (gameMode === 'multiplayer') {
+        updateStatus('Cannot undo moves in multiplayer mode', 'error');
+        return;
+    }
+    
     try {
         const response = await fetch(`${API_URL}/undo`, {
             method: 'POST',
@@ -752,6 +990,13 @@ document.addEventListener('DOMContentLoaded', function() {
             soundManager.playSound('button');
         });
     });
+    
+    // Refresh active games periodically
+    setInterval(() => {
+        if (gameMode === 'multiplayer' && !multiplayerGame) {
+            fetchActiveGames();
+        }
+    }, 5000);
 });
 
 // Sound control functions
