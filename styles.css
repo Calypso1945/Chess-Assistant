@@ -123,6 +123,12 @@ body {
     -webkit-text-stroke: 1px #ffffff;
 }
 
+.control-group input[type="checkbox"] {
+    width: auto;
+    margin-right: 10px;
+    transform: scale(1.2);
+}
+
 .piece:active {
     cursor: grabbing;
     transform: scale(1.1);
@@ -175,6 +181,12 @@ body {
     border-radius: 4px;
     color: #e0e0e0;
     font-size: 14px;
+}
+
+.control-group input[type="checkbox"] {
+    width: auto;
+    margin-right: 10px;
+    transform: scale(1.2);
 }
 
 .control-group input[type="range"] {
