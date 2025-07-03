@@ -225,6 +225,11 @@ body {
     background: #777;
 }
 
+.button.small {
+    padding: 5px 10px;
+    font-size: 12px;
+}
+
 .move-history {
     max-height: 300px;
     overflow-y: auto;
@@ -381,6 +386,83 @@ body {
     background: #3a3a3a;
 }
 
+/* Multiplayer styles */
+.multiplayer-info {
+    background: #1a1a1a;
+    padding: 10px;
+    border-radius: 4px;
+    margin-top: 10px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.multiplayer-status {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    gap: 20px;
+}
+
+.turn-indicator {
+    font-weight: bold;
+    color: #888;
+}
+
+.turn-indicator.your-turn {
+    color: #4fc3f7;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+.game-link {
+    margin-top: 15px;
+}
+
+.share-container {
+    display: flex;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+.share-container input {
+    flex: 1;
+    font-family: monospace;
+    font-weight: bold;
+    text-align: center;
+}
+
+.active-games {
+    margin-top: 15px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.active-games h4 {
+    color: #4fc3f7;
+    margin-bottom: 10px;
+    font-size: 16px;
+}
+
+.active-game-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px;
+    background: #1a1a1a;
+    border-radius: 4px;
+    margin-bottom: 5px;
+}
+
+.active-game-item span {
+    font-size: 13px;
+    color: #b0b0b0;
+}
+
 /* Spinner for loading */
 .spinner {
     border: 3px solid #f3f3f3;
@@ -395,4 +477,43 @@ body {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* Responsive design */
+@media (max-width: 1200px) {
+    .container {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .controls {
+        max-width: 640px;
+        width: 100%;
+    }
+}
+
+@media (max-width: 700px) {
+    .board-container {
+        width: 100vw;
+        max-width: 500px;
+        height: auto;
+        padding: 10px;
+    }
+    
+    .chess-board {
+        width: 100%;
+        height: 0;
+        padding-bottom: 100%;
+        position: relative;
+    }
+    
+    .square {
+        position: absolute !important;
+        width: 12.5%;
+        height: 12.5%;
+    }
+    
+    .piece {
+        font-size: calc(3vw + 20px);
+    }
 }
