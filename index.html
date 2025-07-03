@@ -6,6 +6,7 @@
     <title>Chess Assistant</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>♔</text></svg>">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -20,6 +21,7 @@
                 </div>
             </div>
             <div class="status-bar" id="status">Ready to play</div>
+            <div class="multiplayer-info" id="multiplayerInfo"></div>
         </div>
 
         <div class="controls">
@@ -47,13 +49,35 @@
                 </div>
                 <div class="control-group">
                     <label for="gameMode">Game Mode</label>
-                    <select id="gameMode">
+                    <select id="gameMode" onchange="handleGameModeChange()">
                         <option value="suggest">Suggest Moves Only</option>
                         <option value="play">Play vs Computer</option>
+                        <option value="multiplayer">Multiplayer</option>
                     </select>
                 </div>
                 <button class="button" onclick="newGame()">New Game</button>
-                <button class="button secondary" onclick="suggestMove()">Suggest Best Move</button>
+                <button class="button secondary" onclick="suggestMove()" id="suggestButton">Suggest Best Move</button>
+            </div>
+
+            <div class="panel" id="multiplayerPanel" style="display: none;">
+                <h3>Multiplayer</h3>
+                <div class="multiplayer-options">
+                    <button class="button" onclick="createMultiplayerGame()">Create Game</button>
+                    <div class="control-group">
+                        <label for="gameIdInput">Game ID</label>
+                        <input type="text" id="gameIdInput" placeholder="Enter game ID to join">
+                        <button class="button secondary" style="margin-top: 10px;" onclick="joinMultiplayerGame()">Join Game</button>
+                    </div>
+                    <div class="active-games" id="activeGames"></div>
+                </div>
+                <div class="game-link" id="gameLink" style="display: none;">
+                    <p>Share this Game ID:</p>
+                    <div class="share-container">
+                        <input type="text" id="gameLinkText" readonly>
+                        <button class="button secondary" onclick="copyGameId()">Copy</button>
+                    </div>
+                    <button class="button secondary" onclick="leaveMultiplayerGame()">Leave Game</button>
+                </div>
             </div>
 
             <div class="panel">
