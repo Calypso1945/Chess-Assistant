@@ -5,12 +5,22 @@ import chess.engine
 import chess.pgn
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit, join_room, leave_room
 from datetime import datetime
 import io
 import platform
+import uuid
+import logging
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+# Store active games
+active_games = {}
 
 # Auto-detect Stockfish path in local directory
 def find_stockfish_path():
@@ -69,6 +79,7 @@ if not STOCKFISH_PATH:
     print("=" * 60)
 else:
     print(f"Using Stockfish engine at: {STOCKFISH_PATH}")
+
 engine = None
 board = chess.Board()
 game_history = []
@@ -77,8 +88,94 @@ config = {
     'threads': 1,
     'memory': 128,  # MB for hash table
     'player_color': 'white',
-    'mode': 'suggest'  # 'suggest' or 'play'
+    'mode': 'suggest'  # 'suggest', 'play', or 'multiplayer'
 }
+
+class MultiplayerGame:
+    def __init__(self, game_id):
+        self.game_id = game_id
+        self.board = chess.Board()
+        self.players = {'white': None, 'black': None}
+        self.spectators = []
+        self.history = []
+        self.status = 'waiting'  # waiting, active, finished
+        
+    def add_player(self, player_id, color=None):
+        if color and not self.players[color]:
+            self.players[color] = player_id
+            if self.players['white'] and self.players['black']:
+                self.status = 'active'
+            return color
+        elif not self.players['white']:
+            self.players['white'] = player_id
+            return 'white'
+        elif not self.players['black']:
+            self.players['black'] = player_id
+            self.status = 'active'
+            return 'black'
+        else:
+            self.spectators.append(player_id)
+            return 'spectator'
+    
+    def remove_player(self, player_id):
+        for color, pid in self.players.items():
+            if pid == player_id:
+                self.players[color] = None
+                self.status = 'waiting'
+                return
+        if player_id in self.spectators:
+            self.spectators.remove(player_id)
+    
+    def get_current_turn(self):
+        return 'white' if self.board.turn == chess.WHITE else 'black'
+    
+    def make_move(self, from_square, to_square, promotion=None):
+        try:
+            move_uci = from_square + to_square + (promotion.lower() if promotion else '')
+            move = chess.Move.from_uci(move_uci)
+            
+            if move in self.board.legal_moves:
+                san = self.board.san(move)
+                self.board.push(move)
+                self.history.append({
+                    'move': san,
+                    'fen': self.board.fen(),
+                    'from': from_square,
+                    'to': to_square
+                })
+                
+                if self.board.is_game_over():
+                    self.status = 'finished'
+                
+                return True
+            return False
+        except:
+            return False
+    
+    def get_state(self):
+        return {
+            'game_id': self.game_id,
+            'fen': self.board.fen(),
+            'players': self.players,
+            'current_turn': self.get_current_turn(),
+            'status': self.status,
+            'history': self.get_move_history(),
+            'game_over': self.board.is_game_over(),
+            'result': self.board.result() if self.board.is_game_over() else None
+        }
+    
+    def get_move_history(self):
+        moves = []
+        for i in range(0, len(self.history), 2):
+            move_num = i // 2 + 1
+            white_move = self.history[i]['move'] if i < len(self.history) else ''
+            black_move = self.history[i + 1]['move'] if i + 1 < len(self.history) else ''
+            moves.append({
+                'number': move_num,
+                'white': white_move,
+                'black': black_move
+            })
+        return moves
 
 def init_engine():
     global engine
@@ -114,6 +211,111 @@ def styles():
 def script():
     return send_from_directory('.', 'script.js')
 
+# WebSocket events for multiplayer
+@socketio.on('connect')
+def handle_connect():
+    print(f'Client connected: {request.sid}')
+    emit('connected', {'player_id': request.sid})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print(f'Client disconnected: {request.sid}')
+    # Remove player from any active games
+    for game_id, game in list(active_games.items()):
+        game.remove_player(request.sid)
+        if game.status == 'waiting':
+            socketio.emit('player_left', game.get_state(), room=game_id)
+        if not game.players['white'] and not game.players['black'] and not game.spectators:
+            del active_games[game_id]
+            print(f'Game {game_id} deleted - no players')
+
+@socketio.on('create_game')
+def handle_create_game(data):
+    game_id = str(uuid.uuid4())[:8]
+    game = MultiplayerGame(game_id)
+    active_games[game_id] = game
+    
+    color = data.get('color', None)
+    assigned_color = game.add_player(request.sid, color)
+    
+    join_room(game_id)
+    emit('game_created', {
+        'game_id': game_id,
+        'color': assigned_color,
+        'state': game.get_state()
+    })
+    print(f'Game created: {game_id}')
+
+@socketio.on('join_game')
+def handle_join_game(data):
+    game_id = data['game_id']
+    if game_id not in active_games:
+        emit('error', {'message': 'Game not found'})
+        return
+    
+    game = active_games[game_id]
+    color = data.get('color', None)
+    assigned_color = game.add_player(request.sid, color)
+    
+    join_room(game_id)
+    emit('game_joined', {
+        'game_id': game_id,
+        'color': assigned_color,
+        'state': game.get_state()
+    })
+    
+    # Notify all players in the room
+    socketio.emit('player_joined', game.get_state(), room=game_id)
+    print(f'Player {request.sid} joined game {game_id} as {assigned_color}')
+
+@socketio.on('make_multiplayer_move')
+def handle_multiplayer_move(data):
+    game_id = data['game_id']
+    if game_id not in active_games:
+        emit('error', {'message': 'Game not found'})
+        return
+    
+    game = active_games[game_id]
+    
+    # Verify it's the player's turn
+    current_turn = game.get_current_turn()
+    if game.players[current_turn] != request.sid:
+        emit('error', {'message': 'Not your turn'})
+        return
+    
+    # Make the move
+    success = game.make_move(data['from'], data['to'], data.get('promotion'))
+    
+    if success:
+        state = game.get_state()
+        socketio.emit('move_made', state, room=game_id)
+        
+        # Play sound notification for the opponent
+        socketio.emit('play_sound', {'sound': 'move'}, room=game_id, skip_sid=request.sid)
+    else:
+        emit('error', {'message': 'Invalid move'})
+
+@socketio.on('get_game_state')
+def handle_get_game_state(data):
+    game_id = data['game_id']
+    if game_id not in active_games:
+        emit('error', {'message': 'Game not found'})
+        return
+    
+    game = active_games[game_id]
+    emit('game_state', game.get_state())
+
+@socketio.on('leave_game')
+def handle_leave_game(data):
+    game_id = data['game_id']
+    if game_id in active_games:
+        game = active_games[game_id]
+        game.remove_player(request.sid)
+        leave_room(game_id)
+        socketio.emit('player_left', game.get_state(), room=game_id)
+        print(f'Player {request.sid} left game {game_id}')
+
+# Single player endpoints (unchanged)
 @app.route('/api/init', methods=['POST'])
 def initialize():
     success = init_engine()
@@ -345,6 +547,18 @@ def get_legal_moves():
             'moves': [move.uci() for move in board.legal_moves]
         })
 
+@app.route('/api/active_games', methods=['GET'])
+def get_active_games():
+    games_list = []
+    for game_id, game in active_games.items():
+        games_list.append({
+            'game_id': game_id,
+            'status': game.status,
+            'players': game.players,
+            'spectators_count': len(game.spectators)
+        })
+    return jsonify({'games': games_list})
+
 def get_best_move():
     if not engine:
         return None
@@ -392,6 +606,7 @@ atexit.register(cleanup)
 if __name__ == '__main__':
     init_engine()
     try:
-        app.run(debug=True, port=5000)
+        # Run with SocketIO
+        socketio.run(app, debug=True, host='0.0.0.0', port=5000)
     finally:
         cleanup()
