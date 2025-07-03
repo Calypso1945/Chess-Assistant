@@ -15,9 +15,147 @@ const pieceUnicode = {
     'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
 };
 
+// Sound system
+const soundManager = {
+    enabled: true,
+    volume: 0.7,
+    sounds: {},
+    
+    // Initialize all sounds
+    init() {
+        // Create audio context for web audio API
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Define sound frequencies and patterns
+        this.soundDefinitions = {
+            move: { frequency: 800, duration: 0.1, type: 'sine' },
+            capture: { frequency: 600, duration: 0.15, type: 'square' },
+            check: { frequency: 1000, duration: 0.2, type: 'sawtooth' },
+            checkmate: { frequency: 400, duration: 0.5, type: 'triangle' },
+            castle: { frequency: 700, duration: 0.2, type: 'sine' },
+            promotion: { frequency: 1200, duration: 0.3, type: 'sine' },
+            gameStart: { frequency: 880, duration: 0.2, type: 'sine' },
+            gameEnd: { frequency: 440, duration: 0.4, type: 'sine' },
+            button: { frequency: 900, duration: 0.05, type: 'sine' },
+            error: { frequency: 300, duration: 0.2, type: 'square' }
+        };
+        
+        console.log('Sound system initialized');
+    },
+    
+    // Generate and play a sound
+    playSound(soundName) {
+        if (!this.enabled || this.volume === 0) return;
+        
+        const soundDef = this.soundDefinitions[soundName];
+        if (!soundDef) return;
+        
+        try {
+            // Resume audio context if suspended (required for some browsers)
+            if (this.audioContext.state === 'suspended') {
+                this.audioContext.resume();
+            }
+            
+            const oscillator = this.audioContext.createOscillator();
+            const gainNode = this.audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(soundDef.frequency, this.audioContext.currentTime);
+            oscillator.type = soundDef.type;
+            
+            // Set volume envelope
+            gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(this.volume * 0.3, this.audioContext.currentTime + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + soundDef.duration);
+            
+            oscillator.start(this.audioContext.currentTime);
+            oscillator.stop(this.audioContext.currentTime + soundDef.duration);
+            
+        } catch (error) {
+            console.warn('Error playing sound:', error);
+        }
+    },
+    
+    // Special multi-tone sounds
+    playComplexSound(soundName) {
+        if (!this.enabled || this.volume === 0) return;
+        
+        switch(soundName) {
+            case 'promotion':
+                // Play ascending notes
+                setTimeout(() => this.playSound('promotion'), 0);
+                setTimeout(() => this.playFrequency(1400, 0.1, 'sine'), 100);
+                setTimeout(() => this.playFrequency(1600, 0.1, 'sine'), 200);
+                break;
+                
+            case 'checkmate':
+                // Play dramatic descending sequence
+                this.playFrequency(800, 0.15, 'triangle');
+                setTimeout(() => this.playFrequency(600, 0.15, 'triangle'), 150);
+                setTimeout(() => this.playFrequency(400, 0.3, 'triangle'), 300);
+                break;
+                
+            case 'castle':
+                // Play two quick notes
+                this.playFrequency(700, 0.1, 'sine');
+                setTimeout(() => this.playFrequency(900, 0.1, 'sine'), 100);
+                break;
+                
+            default:
+                this.playSound(soundName);
+        }
+    },
+    
+    // Play a specific frequency
+    playFrequency(frequency, duration, type) {
+        if (!this.enabled || this.volume === 0) return;
+        
+        try {
+            if (this.audioContext.state === 'suspended') {
+                this.audioContext.resume();
+            }
+            
+            const oscillator = this.audioContext.createOscillator();
+            const gainNode = this.audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
+            oscillator.type = type;
+            
+            gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(this.volume * 0.3, this.audioContext.currentTime + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + duration);
+            
+            oscillator.start(this.audioContext.currentTime);
+            oscillator.stop(this.audioContext.currentTime + duration);
+            
+        } catch (error) {
+            console.warn('Error playing frequency:', error);
+        }
+    },
+    
+    // Set volume (0-1)
+    setVolume(volume) {
+        this.volume = Math.max(0, Math.min(1, volume));
+    },
+    
+    // Toggle sound on/off
+    toggle() {
+        this.enabled = !this.enabled;
+        return this.enabled;
+    }
+};
+
 // Initialize the application
 async function init() {
     try {
+        // Initialize sound system
+        soundManager.init();
+        
         const response = await fetch(`${API_URL}/init`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
@@ -28,11 +166,14 @@ async function init() {
             currentFEN = data.fen;
             renderBoard();
             updateStatus('Engine initialized successfully', 'success');
+            soundManager.playSound('gameStart');
         } else {
             updateStatus('Failed to initialize engine', 'error');
+            soundManager.playSound('error');
         }
     } catch (error) {
         updateStatus('Error connecting to server: ' + error.message, 'error');
+        soundManager.playSound('error');
     }
 }
 
@@ -231,6 +372,14 @@ async function makeMove(from, to, promotion = null) {
         }
     }
 
+    // Check if it's a capture move
+    const targetSquare = document.querySelector(`[data-square="${to}"]`);
+    const isCapture = targetSquare && targetSquare.querySelector('.piece');
+    
+    // Check for castling
+    const isCastling = piece && piece.dataset.piece.toLowerCase() === 'k' && 
+                      Math.abs(from.charCodeAt(0) - to.charCodeAt(0)) === 2;
+
     try {
         const response = await fetch(`${API_URL}/move`, {
             method: 'POST',
@@ -244,26 +393,50 @@ async function makeMove(from, to, promotion = null) {
             renderBoard();
             updateMoveHistory(data.move_history);
             
+            // Play appropriate sound
+            if (promotion) {
+                soundManager.playComplexSound('promotion');
+            } else if (isCastling) {
+                soundManager.playComplexSound('castle');
+            } else if (isCapture) {
+                soundManager.playSound('capture');
+            } else {
+                soundManager.playSound('move');
+            }
+            
             if (data.computer_move) {
                 setTimeout(() => {
                     currentFEN = data.fen;
                     renderBoard();
                     updateMoveHistory(data.move_history);
+                    // Play sound for computer move
+                    soundManager.playSound('move');
                 }, 100);
             }
             
             if (data.game_over) {
                 updateStatus(`Game Over! Result: ${data.result}`, 'success');
+                if (data.result.includes('checkmate')) {
+                    soundManager.playComplexSound('checkmate');
+                } else {
+                    soundManager.playSound('gameEnd');
+                }
             } else {
+                // Check if the move resulted in check
+                if (data.in_check) {
+                    soundManager.playSound('check');
+                }
                 updateStatus('Move made successfully', 'success');
             }
             
             lastSuggestion = null;
         } else {
             updateStatus(data.error || 'Invalid move', 'error');
+            soundManager.playSound('error');
         }
     } catch (error) {
         updateStatus('Error making move: ' + error.message, 'error');
+        soundManager.playSound('error');
     }
 }
 
@@ -359,6 +532,9 @@ async function newGame() {
     
     // Re-render board with new orientation
     renderBoard();
+    
+    // Play game start sound
+    soundManager.playSound('gameStart');
     
     // If playing as black, make computer move
     if (gameMode === 'play' && playerColor === 'black') {
@@ -561,7 +737,39 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('memory').addEventListener('input', (e) => {
         document.getElementById('memoryValue').textContent = e.target.value;
     });
+    
+    document.getElementById('volume').addEventListener('input', (e) => {
+        const volume = e.target.value / 100;
+        soundManager.setVolume(volume);
+        document.getElementById('volumeValue').textContent = e.target.value;
+        // Save volume preference
+        localStorage.setItem('chessVolume', e.target.value);
+    });
+    
+    // Add button click sounds to all buttons
+    document.querySelectorAll('.button').forEach(button => {
+        button.addEventListener('click', () => {
+            soundManager.playSound('button');
+        });
+    });
 });
+
+// Sound control functions
+function toggleSounds() {
+    const enabled = document.getElementById('soundEnabled').checked;
+    soundManager.enabled = enabled;
+    localStorage.setItem('chessSoundsEnabled', enabled);
+    
+    if (enabled) {
+        soundManager.playSound('button');
+    }
+}
+
+function testSound() {
+    soundManager.playSound('move');
+    setTimeout(() => soundManager.playSound('capture'), 200);
+    setTimeout(() => soundManager.playComplexSound('castle'), 400);
+}
 
 // Handle color change
 function handleColorChange() {
@@ -663,17 +871,33 @@ function changeTheme() {
     localStorage.setItem('chessTheme', theme);
 }
 
-// Load saved theme on startup
-function loadSavedTheme() {
+// Load saved theme and sound settings on startup
+function loadSavedSettings() {
+    // Load theme
     const savedTheme = localStorage.getItem('chessTheme');
     if (savedTheme) {
         document.getElementById('boardTheme').value = savedTheme;
         changeTheme();
     }
+    
+    // Load sound settings
+    const savedSoundsEnabled = localStorage.getItem('chessSoundsEnabled');
+    if (savedSoundsEnabled !== null) {
+        const enabled = savedSoundsEnabled === 'true';
+        document.getElementById('soundEnabled').checked = enabled;
+        soundManager.enabled = enabled;
+    }
+    
+    const savedVolume = localStorage.getItem('chessVolume');
+    if (savedVolume) {
+        document.getElementById('volume').value = savedVolume;
+        document.getElementById('volumeValue').textContent = savedVolume;
+        soundManager.setVolume(savedVolume / 100);
+    }
 }
 
 // Initialize on load
 window.addEventListener('load', () => {
-    loadSavedTheme();
+    loadSavedSettings();
     init();
 });
